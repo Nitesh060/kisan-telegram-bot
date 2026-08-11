@@ -3,59 +3,43 @@ services:
     name: kisan-telegram-bot
     runtime: python
     pythonVersion: 3.11
-    
-    # Build
+
     buildCommand: pip install -r requirements.txt
-    
-    # Start command
+
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    
-    # Port
-    port: 8000
-    
-    # Health check
+
     healthCheckPath: /health
-    
-    # Environment
+
     envVars:
       - key: ENVIRONMENT
         value: production
-      
+
       - key: USE_WEBHOOK
         value: "true"
-      
+
       - key: WEBHOOK_URL
-        sync: false  # Will be set to your render URL after deployment
-      
+        sync: false
+
       - key: DATABASE_URL
-        sync: false  # Link to PostgreSQL database
-      
+        sync: false
+
       - key: TELEGRAM_BOT_TOKEN
-        sync: false  # Must be kept secret!
-      
+        sync: false
+
       - key: MODEL_PATH
         value: models/crop_disease_model.keras
-      
+
       - key: CLASS_NAMES_PATH
         value: models/class_names.json
-      
+
       - key: CONFIDENCE_HIGH
         value: "0.85"
-      
+
       - key: CONFIDENCE_LOW
         value: "0.60"
-      
+
       - key: MAX_IMAGE_SIZE_MB
         value: "10"
-      
-      - key: PORT
-        value: "8000"
-      
+
       - key: LOG_LEVEL
         value: INFO
-  
-  # Database (PostgreSQL)
-  - type: pserv
-    name: kisan-telegram-bot-db
-    ipAllowList: []
-    plan: free  # or standard/professional for production
