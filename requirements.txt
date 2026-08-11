@@ -8,9 +8,11 @@ sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 
 # Machine Learning
-tensorflow==2.14.0
-keras==2.14.0
-numpy==1.24.3
+# Keras 3 compatible with the uploaded .keras model
+# TensorFlow 2.16+ is required for Keras 3 model deserialization.
+tensorflow==2.16.1
+keras==3.3.3
+numpy==1.26.4
 Pillow==10.1.0
 
 # Environment
