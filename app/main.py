@@ -55,41 +55,30 @@ async def lifespan(app: FastAPI):
     # Initialize Telegram application
     global telegram_app, telegram_service
     try:
-        telegram_app = (
-    Application.builder()
-    .token(settings.TELEGRAM_BOT_TOKEN)
-    .build()
-)
+        telegram_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
-# Initialize Telegram application
-await telegram_app.initialize()
+        # Initialize the Telegram application before processing updates.
+        await telegram_app.initialize()
+        
+        # Add handlers
+        telegram_app.add_handler(CommandHandler("start", start_handler))
+        telegram_app.add_handler(CommandHandler("help", help_handler))
+        telegram_app.add_handler(CommandHandler("about", about_handler))
+        telegram_app.add_handler(CommandHandler("language", language_handler))
+        telegram_app.add_handler(MessageHandler(filters.PHOTO, image_handler))
+        telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+        
+        telegram_service = TelegramService(telegram_app)
 
-# Add handlers
-telegram_app.add_handler(CommandHandler("start", start_handler))
-telegram_app.add_handler(CommandHandler("help", help_handler))
-telegram_app.add_handler(CommandHandler("about", about_handler))
-telegram_app.add_handler(CommandHandler("language", language_handler))
-telegram_app.add_handler(MessageHandler(filters.PHOTO, image_handler))
-telegram_app.add_handler(
-    MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler)
-)
-
-telegram_service = TelegramService(telegram_app)
-
-# Start Telegram application
-await telegram_app.start()
-
-if settings.USE_WEBHOOK:
-    await telegram_app.bot.set_webhook(
-        url=settings.WEBHOOK_URL,
-        drop_pending_updates=True,
-    )
-
-    logger.info(
-        f"✅ Telegram webhook set to {settings.WEBHOOK_URL}"
-    )
-
-logger.info("✅ Telegram bot initialized successfully")
+        # Start the Telegram application so webhook updates are processed.
+        await telegram_app.start()
+        
+        if settings.USE_WEBHOOK:
+            # Webhook mode
+            await telegram_app.bot.set_webhook(
+                url=settings.WEBHOOK_URL,
+                drop_pending_updates=True,
+            )
             logger.info(f"✅ Telegram webhook set to {settings.WEBHOOK_URL}")
         else:
             # Polling mode (development)
@@ -106,6 +95,7 @@ logger.info("✅ Telegram bot initialized successfully")
     logger.info("🛑 Shutting down Kisan Telegram Bot...")
     if telegram_app:
         await telegram_app.stop()
+        await telegram_app.shutdown()
     logger.info("✅ Bot shutdown complete")
 
 
