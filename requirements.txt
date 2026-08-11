@@ -8,10 +8,10 @@ sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 
 # Machine Learning
-# Keras 3 compatible with the uploaded .keras model
-# TensorFlow 2.16+ is required for Keras 3 model deserialization.
+# Keras 3.11 is required for the preprocessing-layer config
+# (e.g. RandomFlip data_format) stored in the exported model.
 tensorflow==2.16.1
-keras==3.3.3
+keras==3.11.3
 numpy==1.26.4
 Pillow==10.1.0
 
