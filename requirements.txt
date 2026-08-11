@@ -1,0 +1,29 @@
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-telegram-bot==20.3
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+
+# Machine Learning
+tensorflow==2.14.0
+keras==2.14.0
+numpy==1.24.3
+Pillow==10.1.0
+
+# Environment
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Utilities
+requests==2.31.0
+python-multipart==0.0.6
+
+# Development (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.12.0
+flake8==6.1.0
