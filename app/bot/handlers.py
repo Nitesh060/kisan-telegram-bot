@@ -134,8 +134,37 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         confidence_percent = prediction["confidence_percent"]
         logger.info(f"✅ Prediction: {crop} - {disease} ({confidence_percent:.1f}%)")
 
+        # Do not hide low-confidence predictions. Show the model's actual
+        # prediction and Top-3 alternatives so the user can understand that
+        # the result is uncertain instead of receiving only a generic error.
         if confidence < settings.CONFIDENCE_LOW:
-            await context.bot.send_message(chat_id=chat_id, text=ResponseGenerator.get_error_message("low_confidence", language))
+            top_predictions = prediction.get("top_predictions", [])
+            lines = [
+                "🔎 *Low-Confidence Prediction*",
+                "",
+                f"🌱 *Possible Crop:* {crop}",
+                f"🦠 *Possible Disease:* {disease}",
+                f"📊 *Confidence:* {confidence_percent:.2f}%",
+                "",
+                "*Top alternatives:*",
+            ]
+
+            for rank, item in enumerate(top_predictions[:3], start=1):
+                class_name = str(item.get("class", "Unknown")).replace("__", " – ").replace("_", " ")
+                item_confidence = float(item.get("confidence", 0.0)) * 100
+                lines.append(f"{rank}. {class_name} — {item_confidence:.2f}%")
+
+            lines.extend([
+                "",
+                "⚠️ *This result is uncertain.*",
+                "Please send a clear close-up photo of the affected leaf, stem, or fruit in good lighting.",
+            ])
+
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="\n".join(lines),
+                parse_mode="Markdown",
+            )
             return
 
         with DatabaseManager() as session:
