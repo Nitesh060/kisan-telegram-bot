@@ -27,7 +27,7 @@ services:
         sync: false
 
       - key: MODEL_PATH
-        value: models/crop_disease_model.h5
+        value: models/crop_disease_model.keras
 
       - key: CLASS_NAMES_PATH
         value: models/class_names.json
