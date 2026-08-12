@@ -10,8 +10,8 @@ psycopg2-binary==2.9.9
 # Machine Learning
 # Keras 3.11 is required for the preprocessing-layer config
 # (e.g. RandomFlip data_format) stored in the exported model.
-tensorflow==2.16.1
-keras==3.11.3
+tensorflow==2.20.0
+keras==3.13.2
 numpy==1.26.4
 Pillow==10.1.0
 
