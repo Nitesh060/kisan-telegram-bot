@@ -17,6 +17,68 @@ logger = logging.getLogger(__name__)
 
 class ResponseGenerator:
     """Generate responses from templates and database data."""
+
+    @staticmethod
+    def _get_disease_info(session: Session, crop: str, disease: str):
+        """Find disease information using tolerant name matching.
+
+        The ML model may return labels such as ``late blight`` while the
+        database may store ``Late Blight``, ``late-blight`` or include the
+        crop name. Try safe normalized variants without changing the DB.
+        """
+        crop_clean = (crop or "").strip()
+        disease_clean = (disease or "").strip()
+
+        candidates = []
+
+        def add(value: str):
+            value = (value or "").strip()
+            if value and value not in candidates:
+                candidates.append(value)
+
+        # Original value first.
+        add(disease_clean)
+
+        # Handle labels like "Tomato - late blight" if they reach this layer.
+        if " - " in disease_clean:
+            left, right = disease_clean.split(" - ", 1)
+            if not crop_clean:
+                crop_clean = left.strip()
+            add(right)
+        elif crop_clean and disease_clean.lower().startswith(crop_clean.lower()):
+            remainder = disease_clean[len(crop_clean):].strip(" -:_")
+            add(remainder)
+
+        # Common formatting variants.
+        for value in list(candidates):
+            add(value.lower())
+            add(value.title())
+            add(value.replace("_", " "))
+            add(value.replace("-", " "))
+            add(value.replace("_", "-").replace(" ", "-"))
+
+        # Also try combined crop+disease forms for databases that store the
+        # full label in one disease column.
+        disease_variants = list(candidates)
+        if crop_clean and disease_clean:
+            for value in disease_variants:
+                add(f"{crop_clean} - {value}")
+                add(f"{crop_clean} {value}")
+
+        for candidate in candidates:
+            try:
+                result = DiseaseRepository.get_disease(session, crop_clean, candidate)
+                if result:
+                    logger.info(
+                        "Disease DB match: %s - %s (requested: %s - %s)",
+                        crop_clean, candidate, crop, disease
+                    )
+                    return result
+            except Exception as exc:
+                logger.debug("Disease lookup failed for '%s': %s", candidate, exc)
+
+        return None
+
     
     @staticmethod
     def generate_disease_response(
@@ -41,7 +103,7 @@ class ResponseGenerator:
         """
         try:
             # Get disease info from database
-            disease_info = DiseaseRepository.get_disease(session, crop, disease)
+            disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             
             if not disease_info:
                 logger.warning(f"Disease not found in DB: {crop} - {disease}")
@@ -121,7 +183,7 @@ class ResponseGenerator:
     ) -> Optional[str]:
         """Generate symptom information response."""
         try:
-            disease_info = DiseaseRepository.get_disease(session, crop, disease)
+            disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
@@ -148,7 +210,7 @@ class ResponseGenerator:
     ) -> Optional[str]:
         """Generate management guidance response."""
         try:
-            disease_info = DiseaseRepository.get_disease(session, crop, disease)
+            disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
@@ -175,7 +237,7 @@ class ResponseGenerator:
     ) -> Optional[str]:
         """Generate prevention guidance response."""
         try:
-            disease_info = DiseaseRepository.get_disease(session, crop, disease)
+            disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
