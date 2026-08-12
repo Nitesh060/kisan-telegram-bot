@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     
     # Confidence thresholds
     CONFIDENCE_HIGH: float = float(os.getenv("CONFIDENCE_HIGH", "0.85"))
-    CONFIDENCE_LOW: float = float(os.getenv("CONFIDENCE_LOW", "0.60"))
+    CONFIDENCE_LOW: float = float(os.getenv("CONFIDENCE_LOW", "0.40"))
     
     # Image processing
     MAX_IMAGE_SIZE_MB: int = int(os.getenv("MAX_IMAGE_SIZE_MB", "10"))
