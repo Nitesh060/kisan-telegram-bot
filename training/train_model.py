@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-Train crop disease detection model using transfer learning
-Uses MobileNetV3Small for lightweight inference
+Train crop disease detection model using transfer learning.
+Uses MobileNetV3Small for lightweight inference.
+
+Important preprocessing rule:
+MobileNetV3Small is created with include_preprocessing=True (the default),
+so training/validation/test generators must NOT rescale images to [0, 1].
+The model receives images in the normal [0, 255] pixel range and performs
+its own MobileNetV3 preprocessing internally.
 """
 
 import os
@@ -26,57 +32,39 @@ logger = logging.getLogger(__name__)
 
 
 def create_model(num_classes: int, input_shape: tuple = (224, 224, 3)) -> keras.Model:
-    """
-    Create transfer learning model using MobileNetV3Small.
-    
-    Args:
-        num_classes: Number of disease classes
-        input_shape: Input image shape
-    
-    Returns:
-        Compiled Keras model
-    """
+    """Create a transfer-learning model using MobileNetV3Small."""
     logger.info(f"🏗️ Creating model with {num_classes} classes...")
-    
-    # Load MobileNetV3Small with ImageNet weights
+
+    # MobileNetV3 preprocessing is kept INSIDE the pretrained model.
+    # Therefore inputs must remain in the [0, 255] pixel range.
     base_model = keras.applications.MobileNetV3Small(
         input_shape=input_shape,
         include_top=False,
-        weights='imagenet',
+        weights="imagenet",
+        include_preprocessing=True,
     )
-    
+
     # Freeze base model layers (transfer learning)
     base_model.trainable = False
-    
-    # Build model
+
     model = keras.Sequential([
         layers.Input(shape=input_shape),
-        
-        # Preprocessing
-        layers.Rescaling(1./255),
-        
-        # Base model
         base_model,
-        
-        # Global average pooling
         layers.GlobalAveragePooling2D(),
-        
-        # Dense layers for classification
         layers.Dropout(0.3),
-        layers.Dense(256, activation='relu'),
+        layers.Dense(256, activation="relu"),
         layers.Dropout(0.2),
-        layers.Dense(128, activation='relu'),
+        layers.Dense(128, activation="relu"),
         layers.Dropout(0.1),
-        layers.Dense(num_classes, activation='softmax'),
+        layers.Dense(num_classes, activation="softmax"),
     ])
-    
-    # Compile
+
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=1e-3),
-        loss='categorical_crossentropy',
-        metrics=['accuracy', keras.metrics.Precision(), keras.metrics.Recall()],
+        loss="categorical_crossentropy",
+        metrics=["accuracy", keras.metrics.Precision(), keras.metrics.Recall()],
     )
-    
+
     logger.info("✅ Model created successfully")
     return model
 
@@ -86,31 +74,26 @@ def create_data_generators(
     target_size: tuple = (224, 224),
 ) -> tuple:
     """
-    Create data generators for training and validation.
-    
-    Args:
-        augmentation: Whether to use data augmentation
-        target_size: Target image size
-    
-    Returns:
-        Tuple of (train_generator, validation_generator)
+    Create data generators.
+
+    Do NOT use rescale=1./255 here. MobileNetV3 performs its own
+    preprocessing inside the model and expects raw [0, 255] pixels.
     """
     if augmentation:
         train_datagen = ImageDataGenerator(
-            rescale=1./255,
             rotation_range=20,
             width_shift_range=0.2,
             height_shift_range=0.2,
             shear_range=0.2,
             zoom_range=0.2,
             horizontal_flip=True,
-            fill_mode='nearest',
+            fill_mode="nearest",
         )
     else:
-        train_datagen = ImageDataGenerator(rescale=1./255)
-    
-    validation_datagen = ImageDataGenerator(rescale=1./255)
-    
+        train_datagen = ImageDataGenerator()
+
+    validation_datagen = ImageDataGenerator()
+
     return train_datagen, validation_datagen
 
 
@@ -122,68 +105,53 @@ def train_model(
     batch_size: int = 32,
     target_size: tuple = (224, 224),
 ) -> dict:
-    """
-    Train the model.
-    
-    Args:
-        model: Keras model to train
-        train_dir: Path to training data directory
-        val_dir: Path to validation data directory
-        epochs: Number of training epochs
-        batch_size: Batch size
-        target_size: Target image size
-    
-    Returns:
-        Training history
-    """
+    """Train the model."""
     logger.info("📊 Setting up data generators...")
-    
-    train_datagen, val_datagen = create_data_generators(augmentation=True, target_size=target_size)
-    
-    # Load training data
+
+    train_datagen, val_datagen = create_data_generators(
+        augmentation=True,
+        target_size=target_size,
+    )
+
     logger.info(f"Loading training data from {train_dir}...")
     train_generator = train_datagen.flow_from_directory(
         train_dir,
         target_size=target_size,
         batch_size=batch_size,
-        class_mode='categorical',
+        class_mode="categorical",
         shuffle=True,
     )
-    
-    # Load validation data
+
     logger.info(f"Loading validation data from {val_dir}...")
     validation_generator = val_datagen.flow_from_directory(
         val_dir,
         target_size=target_size,
         batch_size=batch_size,
-        class_mode='categorical',
+        class_mode="categorical",
         shuffle=False,
     )
-    
-    # Save class mapping
+
     class_indices = train_generator.class_indices
     class_names = {v: k for k, v in class_indices.items()}
-    
+
     logger.info(f"📚 Found {len(class_names)} classes")
     for idx, name in sorted(class_names.items()):
         logger.info(f"   {idx}: {name}")
-    
-    # Callbacks
+
     callbacks = [
         keras.callbacks.EarlyStopping(
-            monitor='val_loss',
+            monitor="val_loss",
             patience=5,
             restore_best_weights=True,
         ),
         keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
+            monitor="val_loss",
             factor=0.5,
             patience=3,
             min_lr=1e-7,
         ),
     ]
-    
-    # Train
+
     logger.info(f"🚀 Starting training for {epochs} epochs...")
     history = model.fit(
         train_generator,
@@ -191,7 +159,7 @@ def train_model(
         validation_data=validation_generator,
         callbacks=callbacks,
     )
-    
+
     return history, class_names
 
 
@@ -200,42 +168,32 @@ def evaluate_model(
     test_dir: str,
     target_size: tuple = (224, 224),
 ) -> dict:
-    """
-    Evaluate model on test data.
-    
-    Args:
-        model: Trained Keras model
-        test_dir: Path to test data directory
-        target_size: Target image size
-    
-    Returns:
-        Evaluation metrics
-    """
+    """Evaluate model on test data."""
     logger.info(f"📊 Evaluating model on {test_dir}...")
-    
-    test_datagen = ImageDataGenerator(rescale=1./255)
-    
+
+    # Keep test inputs in [0, 255] for MobileNetV3 internal preprocessing.
+    test_datagen = ImageDataGenerator()
+
     test_generator = test_datagen.flow_from_directory(
         test_dir,
         target_size=target_size,
         batch_size=32,
-        class_mode='categorical',
+        class_mode="categorical",
         shuffle=False,
     )
-    
-    # Evaluate
+
     eval_results = model.evaluate(test_generator)
-    
+
     results = {
         "test_loss": eval_results[0],
         "test_accuracy": eval_results[1],
         "test_precision": eval_results[2] if len(eval_results) > 2 else None,
         "test_recall": eval_results[3] if len(eval_results) > 3 else None,
     }
-    
+
     logger.info(f"✅ Test Accuracy: {results['test_accuracy']:.4f}")
     logger.info(f"   Test Loss: {results['test_loss']:.4f}")
-    
+
     return results
 
 
@@ -245,26 +203,24 @@ def save_model(
     class_names: dict,
     class_names_path: str,
 ):
-    """
-    Save trained model and class mapping.
-    
-    Args:
-        model: Trained Keras model
-        model_path: Path to save model
-        class_names: Class name mapping
-        class_names_path: Path to save class names
-    """
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    
-    # Save model
+    """Save trained model and class mapping."""
+    model_dir = os.path.dirname(model_path)
+    if model_dir:
+        os.makedirs(model_dir, exist_ok=True)
+
     logger.info(f"💾 Saving model to {model_path}...")
     model.save(model_path)
-    
-    # Save class names
+
     logger.info(f"💾 Saving class names to {class_names_path}...")
-    with open(class_names_path, 'w') as f:
-        json.dump(class_names, f, indent=2)
-    
+    class_names_dir = os.path.dirname(class_names_path)
+    if class_names_dir:
+        os.makedirs(class_names_dir, exist_ok=True)
+    with open(class_names_path, "w", encoding="utf-8") as f:
+        # Save as an ordered list so inference maps output index -> class
+        # unambiguously.
+        ordered_names = [class_names[i] for i in sorted(class_names)]
+        json.dump(ordered_names, f, indent=2, ensure_ascii=False)
+
     logger.info("✅ Model and class names saved successfully")
 
 
@@ -313,10 +269,9 @@ def main():
         default="models/class_names.json",
         help="Path to save class names mapping",
     )
-    
+
     args = parser.parse_args()
-    
-    # Check if training data exists
+
     if not os.path.exists(args.train_dir):
         logger.error(f"❌ Training directory not found: {args.train_dir}")
         logger.info("\nExpected directory structure:")
@@ -325,22 +280,23 @@ def main():
         logger.info("  ├── Tomato_Late_Blight/")
         logger.info("  └── ...")
         return
-    
+
     logger.info("🌾 Kisan Crop Disease Model Training")
-    logger.info("="*60)
-    
-    # Create model
-    num_classes = len([d for d in os.listdir(args.train_dir) if os.path.isdir(os.path.join(args.train_dir, d))])
+    logger.info("=" * 60)
+
+    num_classes = len([
+        d for d in os.listdir(args.train_dir)
+        if os.path.isdir(os.path.join(args.train_dir, d))
+    ])
     if num_classes == 0:
         logger.error("❌ No disease classes found in training directory")
         return
-    
+
     model = create_model(num_classes)
     logger.info("\nModel architecture:")
     model.summary()
-    
-    # Train
-    logger.info("\n" + "="*60)
+
+    logger.info("\n" + "=" * 60)
     history, class_names = train_model(
         model,
         args.train_dir,
@@ -348,20 +304,17 @@ def main():
         epochs=args.epochs,
         batch_size=args.batch_size,
     )
-    
-    # Evaluate on test set if available
+
     if os.path.exists(args.test_dir):
-        logger.info("\n" + "="*60)
-        eval_results = evaluate_model(model, args.test_dir)
+        logger.info("\n" + "=" * 60)
+        evaluate_model(model, args.test_dir)
     else:
         logger.warning(f"⚠️ Test directory not found: {args.test_dir}")
-        eval_results = {}
-    
-    # Save model
-    logger.info("\n" + "="*60)
+
+    logger.info("\n" + "=" * 60)
     save_model(model, args.model_path, class_names, args.class_names_path)
-    
-    logger.info("\n" + "="*60)
+
+    logger.info("\n" + "=" * 60)
     logger.info("✅ Training complete!")
     logger.info(f"Model saved to: {args.model_path}")
     logger.info(f"Class names saved to: {args.class_names_path}")
