@@ -16,6 +16,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from app.config import settings
 from app.database.database import init_db, get_session
+from app.services.disease_service import DiseaseService
 from app.bot.handlers import (
     start_handler,
     help_handler,
@@ -50,6 +51,38 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Database initialized")
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
+        raise
+
+    # Ensure disease master data is available in the deployment database.
+    # Render runs uvicorn directly and does not execute setup.sh, so the
+    # CSV import must happen during application startup.
+    try:
+        csv_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data",
+            "diseases.csv",
+        )
+        if os.path.exists(csv_path):
+            session = get_session()
+            try:
+                results = DiseaseService.import_from_csv(
+                    session,
+                    csv_path,
+                    skip_duplicates=True,
+                )
+                logger.info(
+                    "✅ Disease database ready: total=%s, created=%s, updated=%s, errors=%s",
+                    results["total"],
+                    results["created"],
+                    results["updated"],
+                    results["errors"],
+                )
+            finally:
+                session.close()
+        else:
+            logger.warning("⚠️ Disease CSV not found: %s", csv_path)
+    except Exception as e:
+        logger.error(f"❌ Disease database import failed: {e}")
         raise
     
     # Initialize Telegram application
