@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import telegram
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 from app.config import settings
 from app.database.database import init_db, get_session
@@ -23,6 +23,7 @@ from app.bot.handlers import (
     about_handler,
     language_handler,
     image_handler,
+    crop_selection_handler,
     text_handler,
 )
 from app.bot.telegram_service import TelegramService
@@ -100,6 +101,7 @@ async def lifespan(app: FastAPI):
         telegram_app.add_handler(CommandHandler("help", help_handler))
         telegram_app.add_handler(CommandHandler("about", about_handler))
         telegram_app.add_handler(CommandHandler("language", language_handler))
+        telegram_app.add_handler(CallbackQueryHandler(crop_selection_handler, pattern=r"^crop:"))
         telegram_app.add_handler(MessageHandler(filters.PHOTO, image_handler))
         telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
         
