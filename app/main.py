@@ -144,7 +144,7 @@ app = FastAPI(
 
 
 # Health check endpoint
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check() -> Dict:
     """Health check endpoint for deployment."""
     return {
