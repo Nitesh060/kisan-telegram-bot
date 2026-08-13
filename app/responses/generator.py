@@ -28,22 +28,52 @@ class ResponseGenerator:
         return value.strip()
 
     @staticmethod
+    def _canonical_crop(crop: str) -> str:
+        """Map common ML crop spellings to database crop names."""
+        normalized = ResponseGenerator._normalize(crop)
+        aliases = {
+            "chili": "Chilli",
+            "chilli": "Chilli",
+            "pepper bell": "Pepper_bell",
+            "gauva": "Gauva",
+            "guava": "Gauva",
+        }
+        return aliases.get(normalized, (crop or "").strip())
+
+    @staticmethod
+    def _canonical_disease(crop: str, disease: str) -> str:
+        """Map common ML disease labels to names used by the DB."""
+        normalized = ResponseGenerator._normalize(disease)
+        crop_norm = ResponseGenerator._normalize(crop)
+        aliases = {
+            ("rice", "leaf blast"): "Blast",
+            ("rice", "neck blast"): "Blast",
+            ("wheat", "brown rust"): "Rust",
+            ("wheat", "yellow rust"): "Rust",
+            ("apple", "black rot"): "Black Rot",
+            ("apple", "rust"): "Rust",
+            ("apple", "scab"): "Scab",
+        }
+        return aliases.get((crop_norm, normalized), (disease or "").strip())
+
+    @staticmethod
     def _get_disease_info(session: Session, crop: str, disease: str):
-        """Find disease information using exact and normalized matching."""
-        crop_clean = (crop or "").strip()
+        """Find disease information using exact, canonical and normalized matching."""
+        crop_clean = ResponseGenerator._canonical_crop(crop)
         disease_clean = (disease or "").strip()
 
-        # Handle accidental combined labels such as "Apple - black rot".
         combined_crop = crop_clean
         combined_disease = disease_clean
         if " - " in disease_clean:
             left, right = disease_clean.split(" - ", 1)
             if not combined_crop:
-                combined_crop = left.strip()
+                combined_crop = ResponseGenerator._canonical_crop(left.strip())
             if ResponseGenerator._normalize(left) == ResponseGenerator._normalize(crop_clean):
                 combined_disease = right.strip()
 
-        # First: exact/tolerant repository lookup using common variants.
+        combined_crop = ResponseGenerator._canonical_crop(combined_crop)
+        combined_disease = ResponseGenerator._canonical_disease(combined_crop, combined_disease)
+
         candidates = []
         for value in [combined_disease, disease_clean]:
             if not value:
@@ -72,8 +102,6 @@ class ResponseGenerator:
             except Exception as exc:
                 logger.debug("Disease lookup failed for '%s': %s", candidate, exc)
 
-        # Second: normalized scan within the crop. This handles cases like:
-        # DB: "Black Rot" vs model: "black rot" / "black_rot".
         try:
             crop_diseases = DiseaseRepository.get_diseases_by_crop(session, combined_crop)
             wanted = ResponseGenerator._normalize(combined_disease)
@@ -155,77 +183,48 @@ class ResponseGenerator:
             return None
 
     @staticmethod
-    def generate_info_response(
-        session: Session,
-        crop: str,
-        disease: str,
-        language: str = "en",
-    ) -> Optional[str]:
-        return ResponseGenerator.generate_disease_response(
-            session, crop, disease, confidence=1.0, language=language
-        )
+    def generate_info_response(session: Session, crop: str, disease: str, language: str = "en") -> Optional[str]:
+        return ResponseGenerator.generate_disease_response(session, crop, disease, confidence=1.0, language=language)
 
     @staticmethod
-    def generate_symptom_response(
-        session: Session,
-        crop: str,
-        disease: str,
-        language: str = "en",
-    ) -> Optional[str]:
+    def generate_symptom_response(session: Session, crop: str, disease: str, language: str = "en") -> Optional[str]:
         try:
             disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
-
             if language == "hi":
                 return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🔍 *लक्षण:*\n{disease_info.symptoms}\n"
             return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🔍 *Symptoms:*\n{disease_info.symptoms}\n"
-
         except Exception as e:
             logger.error(f"Error generating symptom response: {e}")
             return None
 
     @staticmethod
-    def generate_management_response(
-        session: Session,
-        crop: str,
-        disease: str,
-        language: str = "en",
-    ) -> Optional[str]:
+    def generate_management_response(session: Session, crop: str, disease: str, language: str = "en") -> Optional[str]:
         try:
             disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
-
             if language == "hi":
                 return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛠️ *प्रबंधन:*\n{disease_info.management}\n"
             return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛠️ *Management:*\n{disease_info.management}\n"
-
         except Exception as e:
             logger.error(f"Error generating management response: {e}")
             return None
 
     @staticmethod
-    def generate_prevention_response(
-        session: Session,
-        crop: str,
-        disease: str,
-        language: str = "en",
-    ) -> Optional[str]:
+    def generate_prevention_response(session: Session, crop: str, disease: str, language: str = "en") -> Optional[str]:
         try:
             disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
-
             if language == "hi":
                 if disease_info.prevention:
                     return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛡️ *रोकथाम:*\n{disease_info.prevention}\n"
                 return "कोई विशिष्ट रोकथाम जानकारी उपलब्ध नहीं है।\n"
-
             if disease_info.prevention:
                 return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛡️ *Prevention:*\n{disease_info.prevention}\n"
             return "No specific prevention information available.\n"
-
         except Exception as e:
             logger.error(f"Error generating prevention response: {e}")
             return None
