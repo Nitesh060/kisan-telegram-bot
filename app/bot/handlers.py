@@ -84,7 +84,10 @@ async def language_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Receive an image, then ask the user which crop it belongs to."""
     image_path = None
+    keep_for_crop_selection = False
+
     try:
         user = update.effective_user
         chat_id = update.effective_chat.id
@@ -92,13 +95,23 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         # Keep only primitive values after the DB session closes.
         with DatabaseManager() as session:
-            user_obj = UserRepository.get_or_create_user(session, user.id, user.username, user.first_name)
+            user_obj = UserRepository.get_or_create_user(
+                session,
+                user.id,
+                user.username,
+                user.first_name,
+            )
             language = user_obj.language or "en"
             user_id = user_obj.id
 
         photo = update.message.photo[-1]
         os.makedirs(settings.TEMP_IMAGE_DIR, exist_ok=True)
-        temp_file = tempfile.NamedTemporaryFile(dir=settings.TEMP_IMAGE_DIR, suffix=".jpg", delete=False)
+
+        temp_file = tempfile.NamedTemporaryFile(
+            dir=settings.TEMP_IMAGE_DIR,
+            suffix=".jpg",
+            delete=False,
+        )
         image_path = temp_file.name
         temp_file.close()
 
@@ -106,43 +119,189 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await file.download_to_drive(image_path)
         logger.info(f"✅ Image saved: {image_path}")
 
-        is_valid, _ = validate_image(image_path, settings.MAX_IMAGE_SIZE_MB)
+        is_valid, _ = validate_image(
+            image_path,
+            settings.MAX_IMAGE_SIZE_MB,
+        )
         if not is_valid:
-            await context.bot.send_message(chat_id=chat_id, text=ResponseGenerator.get_error_message("invalid_image", language))
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=ResponseGenerator.get_error_message(
+                    "invalid_image",
+                    language,
+                ),
+            )
             return
 
         model = get_model()
         if not model.is_model_ready():
-            await context.bot.send_message(chat_id=chat_id, text=ResponseGenerator.get_error_message("model_not_ready", language))
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=ResponseGenerator.get_error_message(
+                    "model_not_ready",
+                    language,
+                ),
+            )
             return
 
-        await context.bot.send_message(chat_id=chat_id, text="🔄 Processing your image..." if language == "en" else "🔄 आपकी छवि को संसाधित किया जा रहा है...")
+        crops = model.get_crops()
+
+        if not crops:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ Crop classes could not be loaded. Please try again.",
+            )
+            return
+
+        # Save the pending image until the user selects a crop.
+        context.user_data["pending_image_path"] = image_path
+        context.user_data["pending_language"] = language
+        context.user_data["pending_user_id"] = user_id
+        context.user_data["pending_chat_id"] = chat_id
+        keep_for_crop_selection = True
+
+        # Dynamic buttons from class_names.json, rather than hard-coding crops.
+        keyboard = []
+        row = []
+
+        for crop in crops:
+            # Callback payload stays short and the actual crop is kept in user_data.
+            key = str(len(context.user_data.get("pending_crop_options", {})))
+            options = context.user_data.setdefault("pending_crop_options", {})
+            options[key] = crop
+
+            row.append(
+                InlineKeyboardButton(
+                    f"🌱 {crop}",
+                    callback_data=f"crop:{key}",
+                )
+            )
+
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+
+        if row:
+            keyboard.append(row)
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "🌱 *Which crop/plant is this?*\n\n"
+                "Please select the crop before I analyse the disease."
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error in image handler: {e}",
+            exc_info=True,
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=ResponseGenerator.get_error_message(
+                "processing_error",
+                "en",
+            ),
+        )
+
+    finally:
+        # The image must remain available while the crop-selection button
+        # is waiting for a callback.
+        if image_path and not keep_for_crop_selection:
+            try:
+                os.unlink(image_path)
+            except OSError:
+                pass
+
+
+async def crop_selection_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Run crop-restricted ML prediction after the user selects a crop."""
+    query = update.callback_query
+
+    try:
+        await query.answer()
+
+        if not query.data or not query.data.startswith("crop:"):
+            return
+
+        option_key = query.data.split(":", 1)[1]
+        options = context.user_data.get("pending_crop_options", {})
+        selected_crop = options.get(option_key)
+
+        image_path = context.user_data.get("pending_image_path")
+        language = context.user_data.get("pending_language", "en")
+        user_id = context.user_data.get("pending_user_id")
+
+        if not selected_crop or not image_path or not os.path.exists(image_path):
+            await query.message.reply_text(
+                "⚠️ Image session expired. Please send the photo again."
+            )
+            return
+
+        await query.edit_message_text(
+            f"🌱 *Crop selected:* {selected_crop}\n\n"
+            "🔄 Analysing the image...",
+            parse_mode="Markdown",
+        )
+
+        model = get_model()
+
+        if not model.is_model_ready():
+            await query.message.reply_text(
+                ResponseGenerator.get_error_message(
+                    "model_not_ready",
+                    language,
+                )
+            )
+            return
 
         image_array = preprocess_image(image_path)
+
         if image_array is None:
-            await context.bot.send_message(chat_id=chat_id, text=ResponseGenerator.get_error_message("processing_error", language))
+            await query.message.reply_text(
+                ResponseGenerator.get_error_message(
+                    "processing_error",
+                    language,
+                )
+            )
             return
 
-        prediction = model.predict(image_array)
+        # IMPORTANT: only classes belonging to the selected crop compete.
+        prediction = model.predict(
+            image_array,
+            selected_crop=selected_crop,
+        )
+
         if not prediction or not prediction.get("success"):
-            await context.bot.send_message(chat_id=chat_id, text=ResponseGenerator.get_error_message("processing_error", language))
+            await query.message.reply_text(
+                "⚠️ I couldn't analyse this crop with the current model.\n"
+                "Please upload a clearer image or select another crop."
+            )
             return
 
         crop = prediction["crop"]
         disease = prediction["disease"]
         confidence = prediction["confidence"]
         confidence_percent = prediction["confidence_percent"]
-        logger.info(f"✅ Prediction: {crop} - {disease} ({confidence_percent:.1f}%)")
 
-        # Do not hide low-confidence predictions. Show the model's actual
-        # prediction and Top-3 alternatives so the user can understand that
-        # the result is uncertain instead of receiving only a generic error.
+        logger.info(
+            f"✅ Crop-selected prediction: {selected_crop} -> "
+            f"{crop} - {disease} ({confidence_percent:.2f}%)"
+        )
+
         if confidence < settings.CONFIDENCE_LOW:
             top_predictions = prediction.get("top_predictions", [])
+
             lines = [
                 "🔎 *Low-Confidence Prediction*",
                 "",
-                f"🌱 *Possible Crop:* {crop}",
+                f"🌱 *Selected Crop:* {selected_crop}",
                 f"🦠 *Possible Disease:* {disease}",
                 f"📊 *Confidence:* {confidence_percent:.2f}%",
                 "",
@@ -150,44 +309,92 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             ]
 
             for rank, item in enumerate(top_predictions[:3], start=1):
-                class_name = str(item.get("class", "Unknown")).replace("__", " – ").replace("_", " ")
+                class_name = (
+                    str(item.get("class", "Unknown"))
+                    .replace("___", " – ")
+                    .replace("__", " – ")
+                    .replace("_", " ")
+                )
                 item_confidence = float(item.get("confidence", 0.0)) * 100
-                lines.append(f"{rank}. {class_name} — {item_confidence:.2f}%")
+                lines.append(
+                    f"{rank}. {class_name} — {item_confidence:.2f}%"
+                )
 
-            lines.extend([
-                "",
-                "⚠️ *This result is uncertain.*",
-                "Please send a clear close-up photo of the affected leaf, stem, or fruit in good lighting.",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "⚠️ *This result is uncertain.*",
+                    "Please send a clear close-up photo of the affected "
+                    "leaf, stem, or fruit in good lighting.",
+                ]
+            )
 
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="\n".join(lines),
+            await query.message.reply_text(
+                "\n".join(lines),
                 parse_mode="Markdown",
             )
             return
 
         with DatabaseManager() as session:
-            response = ResponseGenerator.generate_disease_response(session, crop, disease, confidence, language)
-            interaction = InteractionRepository.create_interaction(
-                session, user_id, crop=crop, predicted_disease=disease,
-                confidence=confidence, response_text=response,
-                response_language=language, image_filename=os.path.basename(image_path),
+            response = ResponseGenerator.generate_disease_response(
+                session,
+                crop,
+                disease,
+                confidence,
+                language,
             )
+
+            interaction = InteractionRepository.create_interaction(
+                session,
+                user_id,
+                crop=crop,
+                predicted_disease=disease,
+                confidence=confidence,
+                response_text=response,
+                response_language=language,
+                image_filename=os.path.basename(image_path),
+            )
+
             SessionRepository.update_session_context(
-                session, user_id, crop=crop, disease=disease,
+                session,
+                user_id,
+                crop=crop,
+                disease=disease,
                 last_interaction_id=interaction.id,
             )
 
         if response:
-            await context.bot.send_message(chat_id=chat_id, text=response, parse_mode="Markdown")
+            await query.message.reply_text(
+                response,
+                parse_mode="Markdown",
+            )
         else:
-            await context.bot.send_message(chat_id=chat_id, text=ResponseGenerator.get_error_message("database_error", language))
+            await query.message.reply_text(
+                ResponseGenerator.get_error_message(
+                    "database_error",
+                    language,
+                )
+            )
 
     except Exception as e:
-        logger.error(f"❌ Error in image handler: {e}", exc_info=True)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=ResponseGenerator.get_error_message("processing_error", "en"))
+        logger.error(
+            f"❌ Error in crop selection handler: {e}",
+            exc_info=True,
+        )
+        try:
+            await query.message.reply_text(
+                "⚠️ Something went wrong while analysing the image."
+            )
+        except Exception:
+            pass
+
     finally:
+        image_path = context.user_data.pop("pending_image_path", None)
+        context.user_data.pop("pending_language", None)
+        context.user_data.pop("pending_user_id", None)
+        context.user_data.pop("pending_chat_id", None)
+        context.user_data.pop("pending_crop_options", None)
+
         if image_path:
             try:
                 os.unlink(image_path)
