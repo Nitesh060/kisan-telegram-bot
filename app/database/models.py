@@ -3,7 +3,7 @@ Database models for Kisan Telegram Bot
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Text, ForeignKey, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -15,7 +15,9 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_user_id = Column(Integer, unique=True, index=True)
+    # Telegram user IDs can exceed PostgreSQL's 32-bit INTEGER range.
+    # BIGINT safely supports current and future Telegram user IDs.
+    telegram_user_id = Column(BigInteger, unique=True, index=True)
     telegram_username = Column(String(255), nullable=True)
     first_name = Column(String(255), nullable=True)
     language = Column(String(10), default="en")
