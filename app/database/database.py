@@ -3,7 +3,7 @@ Database connection and session management
 """
 
 import logging
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.config import settings
 from app.database.models import Base
@@ -36,10 +36,34 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def _migrate_postgres_schema():
+    """Apply small backward-compatible schema fixes required by the current models."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+
+    try:
+        with engine.begin() as connection:
+            # Telegram user IDs can be larger than PostgreSQL INTEGER (32-bit).
+            # Convert an existing INTEGER column to BIGINT so existing deployments
+            # are fixed automatically instead of requiring a manual DB migration.
+            connection.execute(text("""
+                ALTER TABLE users
+                ALTER COLUMN telegram_user_id TYPE BIGINT
+                USING telegram_user_id::BIGINT
+            """))
+        logger.info("✅ PostgreSQL schema migration completed: telegram_user_id -> BIGINT")
+    except Exception as e:
+        # If the column is already BIGINT (or the table is not yet present), do not
+        # prevent startup. Base.metadata.create_all() below remains the source of
+        # truth for creating missing tables.
+        logger.warning(f"⚠️ PostgreSQL schema migration skipped: {e}")
+
+
 def init_db():
-    """Initialize database - create all tables."""
+    """Initialize database - create all tables and apply safe schema fixes."""
     try:
         Base.metadata.create_all(bind=engine)
+        _migrate_postgres_schema()
         logger.info("✅ Database tables created/verified")
     except Exception as e:
         logger.error(f"❌ Database initialization error: {e}")
