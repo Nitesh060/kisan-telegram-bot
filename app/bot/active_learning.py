@@ -2,6 +2,7 @@
 
 import logging
 import os
+from urllib.parse import urlparse, unquote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -13,21 +14,44 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
-    """Upload a verified training image to Cloudinary.
+def _cloudinary_credentials():
+    """Read Cloudinary credentials from either separate vars or CLOUDINARY_URL."""
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+    api_key = os.getenv("CLOUDINARY_API_KEY")
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
 
-    Returns the secure URL, or None when Cloudinary is not configured.
-    """
+    # Cloudinary also provides a single API environment variable in the form:
+    # cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+    cloudinary_url = os.getenv("CLOUDINARY_URL")
+    if cloudinary_url and (not cloud_name or not api_key or not api_secret):
+        try:
+            parsed = urlparse(cloudinary_url)
+            if parsed.scheme != "cloudinary" or not parsed.hostname:
+                raise ValueError("CLOUDINARY_URL must start with cloudinary://")
+            cloud_name = parsed.hostname
+            api_key = unquote(parsed.username or "")
+            api_secret = unquote(parsed.password or "")
+        except Exception as exc:
+            logger.error("Invalid CLOUDINARY_URL configuration: %s", exc)
+            return None, None, None
+
+    return cloud_name, api_key, api_secret
+
+
+def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
+    """Upload a verified training image to Cloudinary."""
     try:
         import cloudinary
         import cloudinary.uploader
 
-        cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
-        api_key = os.getenv("CLOUDINARY_API_KEY")
-        api_secret = os.getenv("CLOUDINARY_API_SECRET")
+        cloud_name, api_key, api_secret = _cloudinary_credentials()
 
         if not all([cloud_name, api_key, api_secret]):
-            logger.warning("Cloudinary environment variables are not configured")
+            logger.error(
+                "Cloudinary credentials missing. Configure either "
+                "CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET "
+                "or CLOUDINARY_URL."
+            )
             return None
 
         cloudinary.config(
@@ -55,13 +79,14 @@ def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
             overwrite=False,
         )
 
+        logger.info("✅ Cloudinary upload successful: %s", result.get("public_id"))
         return result.get("secure_url")
 
     except ImportError:
         logger.error("Cloudinary package is not installed")
         return None
-    except Exception:
-        logger.exception("Cloudinary upload failed")
+    except Exception as exc:
+        logger.exception("Cloudinary upload failed (%s): %s", type(exc).__name__, exc)
         return None
 
 
@@ -292,8 +317,8 @@ async def _download_and_upload_verified(context, file_id: str, crop: str, diseas
         await telegram_file.download_to_drive(temp_path)
         return _cloudinary_upload(temp_path, crop, disease, file_id)
 
-    except Exception:
-        logger.exception("Could not download Telegram image for Cloudinary upload")
+    except Exception as exc:
+        logger.exception("Could not download Telegram image for Cloudinary upload (%s): %s", type(exc).__name__, exc)
         return None
     finally:
         if temp_path:
