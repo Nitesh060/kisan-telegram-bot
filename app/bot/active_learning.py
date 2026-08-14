@@ -18,9 +18,6 @@ def _cloudinary_credentials():
     """Read Cloudinary credentials, preferring the official CLOUDINARY_URL."""
     cloudinary_url = os.getenv("CLOUDINARY_URL")
 
-    # Cloudinary's API environment variable is the canonical connection string
-    # for a product environment. Prefer it so stale/mismatched individual Render
-    # variables cannot override the correct API secret.
     if cloudinary_url:
         try:
             parsed = urlparse(cloudinary_url.strip())
@@ -39,7 +36,6 @@ def _cloudinary_credentials():
             logger.error("Invalid CLOUDINARY_URL configuration: %s", exc)
             return None, None, None
 
-    # Backward-compatible fallback to separate Render environment variables.
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
     api_key = os.getenv("CLOUDINARY_API_KEY")
     api_secret = os.getenv("CLOUDINARY_API_SECRET")
@@ -51,7 +47,7 @@ def _cloudinary_credentials():
 
 
 def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
-    """Upload a verified training image to Cloudinary."""
+    """Upload a verified training image into crop/disease folders in Cloudinary."""
     try:
         import cloudinary
         import cloudinary.uploader
@@ -81,13 +77,19 @@ def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
 
         safe_crop = "_".join(str(crop).strip().lower().split())
         safe_disease = "_".join(str(disease).strip().lower().split())
-        safe_file_id = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(file_id))
-        public_id = f"{safe_crop}/{safe_disease}/{safe_file_id}"
+        safe_file_id = "".join(
+            ch if ch.isalnum() or ch in "-_" else "_" for ch in str(file_id)
+        )
+
+        # Cloudinary product environments can use dynamic folders. In that mode,
+        # slashes inside public_id do NOT necessarily create Media Library folders.
+        # asset_folder explicitly controls the visible folder structure.
+        asset_folder = f"kisan-bot/verified/{safe_crop}/{safe_disease}"
 
         result = cloudinary.uploader.upload(
             file_path,
-            folder="kisan-bot/verified",
-            public_id=public_id,
+            asset_folder=asset_folder,
+            public_id=safe_file_id,
             resource_type="image",
             tags=["verified", "training", safe_crop, safe_disease],
             context={
@@ -98,7 +100,11 @@ def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
             overwrite=False,
         )
 
-        logger.info("✅ Cloudinary upload successful: %s", result.get("public_id"))
+        logger.info(
+            "✅ Cloudinary upload successful: public_id=%s asset_folder=%s",
+            result.get("public_id"),
+            result.get("asset_folder", asset_folder),
+        )
         return result.get("secure_url")
 
     except ImportError:
