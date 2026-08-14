@@ -22,31 +22,29 @@ from app.bot.handlers import (
     help_handler,
     about_handler,
     language_handler,
-    image_handler,
-    crop_selection_handler,
     text_handler,
+)
+from app.bot.active_learning import (
+    image_handler_with_active_learning,
+    crop_selection_with_active_learning,
+    feedback_handler,
 )
 from app.bot.telegram_service import TelegramService
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Global Application instance
 telegram_app: Application = None
 telegram_service: TelegramService = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup and shutdown."""
-    # Startup
     logger.info("🚀 Starting Kisan Telegram Bot...")
-    
-    # Initialize database
+
     try:
         init_db()
         logger.info("✅ Database initialized")
@@ -54,9 +52,6 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Database initialization failed: {e}")
         raise
 
-    # Ensure disease master data is available in the deployment database.
-    # Render runs uvicorn directly and does not execute setup.sh, so the
-    # CSV import must happen during application startup.
     try:
         csv_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -69,16 +64,11 @@ async def lifespan(app: FastAPI):
                 results = DiseaseService.import_from_csv(
                     session,
                     csv_path,
-                    # Re-sync existing rows as well, so a changed CSV is
-                    # reflected in the Render database on every deployment.
                     skip_duplicates=False,
                 )
                 logger.info(
                     "✅ Disease database ready: total=%s, created=%s, updated=%s, errors=%s",
-                    results["total"],
-                    results["created"],
-                    results["updated"],
-                    results["errors"],
+                    results["total"], results["created"], results["updated"], results["errors"],
                 )
             finally:
                 session.close()
@@ -87,48 +77,60 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Disease database import failed: {e}")
         raise
-    
-    # Initialize Telegram application
+
     global telegram_app, telegram_service
     try:
         telegram_app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
-
-        # Initialize the Telegram application before processing updates.
         await telegram_app.initialize()
-        
-        # Add handlers
+
         telegram_app.add_handler(CommandHandler("start", start_handler))
         telegram_app.add_handler(CommandHandler("help", help_handler))
         telegram_app.add_handler(CommandHandler("about", about_handler))
         telegram_app.add_handler(CommandHandler("language", language_handler))
-        telegram_app.add_handler(CallbackQueryHandler(crop_selection_handler, pattern=r"^crop:"))
-        telegram_app.add_handler(MessageHandler(filters.PHOTO, image_handler))
-        telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-        
-        telegram_service = TelegramService(telegram_app)
 
-        # Start the Telegram application so webhook updates are processed.
+        # Crop selection is handled by the active-learning wrapper, which calls
+        # the existing crop prediction and then asks for human verification.
+        telegram_app.add_handler(
+            CallbackQueryHandler(
+                crop_selection_with_active_learning,
+                pattern=r"^crop:",
+            )
+        )
+
+        # Human feedback: correct/wrong/corrected disease.
+        telegram_app.add_handler(
+            CallbackQueryHandler(
+                feedback_handler,
+                pattern=r"^feedback_(yes|no|label):",
+            )
+        )
+
+        telegram_app.add_handler(
+            MessageHandler(filters.PHOTO, image_handler_with_active_learning)
+        )
+        telegram_app.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler)
+        )
+
+        telegram_service = TelegramService(telegram_app)
         await telegram_app.start()
-        
+
         if settings.USE_WEBHOOK:
-            # Webhook mode
             await telegram_app.bot.set_webhook(
                 url=settings.WEBHOOK_URL,
                 drop_pending_updates=True,
             )
             logger.info(f"✅ Telegram webhook set to {settings.WEBHOOK_URL}")
         else:
-            # Polling mode (development)
             logger.warning("⚠️ Using polling mode - not recommended for production")
-        
+
         logger.info("✅ Telegram bot initialized successfully")
     except Exception as e:
         logger.error(f"❌ Telegram bot initialization failed: {e}")
         raise
-    
+
     yield
-    
-    # Shutdown
+
     logger.info("🛑 Shutting down Kisan Telegram Bot...")
     if telegram_app:
         await telegram_app.stop()
@@ -136,7 +138,6 @@ async def lifespan(app: FastAPI):
     logger.info("✅ Bot shutdown complete")
 
 
-# Create FastAPI app
 app = FastAPI(
     title="Kisan Crop Disease Detection Bot",
     description="AI-powered crop disease detection without LLM",
@@ -145,10 +146,8 @@ app = FastAPI(
 )
 
 
-# Health check endpoint
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check() -> Dict:
-    """Health check endpoint for deployment."""
     return {
         "status": "healthy",
         "service": "kisan-telegram-bot",
@@ -156,47 +155,34 @@ async def health_check() -> Dict:
     }
 
 
-# Telegram webhook endpoint
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request) -> JSONResponse:
-    """
-    Receive Telegram updates via webhook.
-    """
     try:
         if not telegram_app:
             logger.error("Telegram app not initialized")
             raise HTTPException(status_code=503, detail="Bot not ready")
-        
+
         update_data = await request.json()
-        
-        # Create Update object from webhook data
         update = Update.de_json(update_data, telegram_app.bot)
-        
-        # Process update
         await telegram_app.process_update(update)
-        
         return JSONResponse({"ok": True})
-    
+
     except Exception as e:
         logger.error(f"❌ Webhook error: {e}", exc_info=True)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
-# Telegram polling endpoint (development mode)
 @app.post("/telegram/polling")
 async def telegram_polling() -> Dict:
-    """
-    Start polling mode for development.
-    """
     if not telegram_app:
         raise HTTPException(status_code=503, detail="Bot not ready")
-    
+
     if settings.USE_WEBHOOK:
         raise HTTPException(
             status_code=400,
             detail="Polling disabled when webhook mode is enabled",
         )
-    
+
     try:
         await telegram_app.start_polling(allowed_updates=Update.ALL_TYPES)
         return {"status": "polling started"}
@@ -205,13 +191,10 @@ async def telegram_polling() -> Dict:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Database check endpoint
 @app.get("/database/health")
 async def database_health() -> Dict:
-    """Check database connection."""
     try:
         session = get_session()
-        # Try a simple query
         session.execute("SELECT 1")
         session.close()
         return {"status": "connected", "database": settings.DATABASE_URL}
@@ -220,13 +203,10 @@ async def database_health() -> Dict:
         return {"status": "disconnected", "error": str(e)}
 
 
-# ML model check endpoint
 @app.get("/ml/health")
 async def ml_health() -> Dict:
-    """Check ML model status."""
     try:
         from app.ml.inference import ModelInference
-        
         model = ModelInference()
         if model.model is None:
             return {
@@ -243,10 +223,8 @@ async def ml_health() -> Dict:
         return {"status": "error", "error": str(e)}
 
 
-# Root endpoint
 @app.get("/")
 async def root() -> Dict:
-    """Root endpoint."""
     return {
         "name": "Kisan Crop Disease Detection Bot",
         "description": "AI-powered crop disease detection for farmers",
@@ -262,8 +240,7 @@ async def root() -> Dict:
 
 if __name__ == "__main__":
     import uvicorn
-    
-    # For local development with polling
+
     if settings.ENVIRONMENT == "development" and not settings.USE_WEBHOOK:
         logger.info("🚀 Starting in development mode with polling...")
         uvicorn.run(
