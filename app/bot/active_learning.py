@@ -1,17 +1,11 @@
 """Human-in-the-loop active learning workflow for crop disease predictions."""
 
 import logging
-from typing import Optional
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from app.database.database import DatabaseManager
-from app.database.repository import (
-    UserRepository,
-    InteractionRepository,
-    FeedbackRepository,
-)
+from app.database.repository import UserRepository, InteractionRepository, FeedbackRepository
 from app.ml.inference import ModelInference
 from app.config import settings
 
@@ -37,8 +31,6 @@ async def crop_selection_with_active_learning(update: Update, context: ContextTy
 
     await crop_selection_handler(update, context)
 
-    # The existing handler creates an Interaction only when it has a usable
-    # prediction. Use the latest interaction for this user as the training item.
     try:
         telegram_user_id = update.effective_user.id
         file_id = context.user_data.get("active_learning_file_id")
@@ -52,11 +44,7 @@ async def crop_selection_with_active_learning(update: Update, context: ContextTy
                 update.effective_user.username,
                 update.effective_user.first_name,
             )
-            interactions = InteractionRepository.get_user_interactions(
-                session,
-                user.id,
-                limit=1,
-            )
+            interactions = InteractionRepository.get_user_interactions(session, user.id, limit=1)
             if not interactions:
                 return
 
@@ -76,14 +64,8 @@ async def crop_selection_with_active_learning(update: Update, context: ContextTy
             sample_id = sample.id
 
         keyboard = [[
-            InlineKeyboardButton(
-                "✅ Correct",
-                callback_data=f"feedback_yes:{sample_id}",
-            ),
-            InlineKeyboardButton(
-                "❌ Wrong",
-                callback_data=f"feedback_no:{sample_id}",
-            ),
+            InlineKeyboardButton("✅ Correct", callback_data=f"feedback_yes:{sample_id}"),
+            InlineKeyboardButton("❌ Wrong", callback_data=f"feedback_no:{sample_id}"),
         ]]
 
         await update.callback_query.message.reply_text(
@@ -114,12 +96,8 @@ async def feedback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not sample:
                     await query.message.reply_text("⚠️ Feedback session expired.")
                     return
-                FeedbackRepository.verify_sample(
-                    session,
-                    sample_id,
-                    sample.model_prediction,
-                    status="verified",
-                )
+                predicted = sample.model_prediction
+                FeedbackRepository.verify_sample(session, sample_id, predicted, status="verified")
 
             await query.edit_message_reply_markup(reply_markup=None)
             await query.message.reply_text(
@@ -162,11 +140,14 @@ async def feedback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if row:
                 keyboard.append(row)
 
+            if not keyboard:
+                await query.message.reply_text("⚠️ No disease labels are available for this crop.")
+                return
+
             context.user_data[f"feedback_options:{sample_id}"] = options
 
             await query.edit_message_text(
-                f"❌ Thanks for correcting it.\n\n"
-                f"🌱 Crop: *{crop}*\n"
+                f"❌ Thanks for correcting it.\n\n🌱 Crop: *{crop}*\n"
                 "Please select the correct disease:",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown",
@@ -180,25 +161,32 @@ async def feedback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             correct_disease = options.get(key)
 
             if not correct_disease:
-                await query.message.reply_text("⚠️ Feedback options expired. Please send the image again.")
+                await query.message.reply_text(
+                    "⚠️ Feedback options expired. Please send the image again."
+                )
                 return
 
             with DatabaseManager() as session:
-                sample = FeedbackRepository.verify_sample(
+                sample = FeedbackRepository.get_sample(session, sample_id)
+                if not sample:
+                    await query.message.reply_text("⚠️ Feedback session expired.")
+                    return
+                crop = sample.crop
+                predicted = sample.model_prediction
+                verified = FeedbackRepository.verify_sample(
                     session,
                     sample_id,
                     correct_disease,
                     status="verified",
                 )
-                if not sample:
+                if not verified:
                     await query.message.reply_text("⚠️ Feedback session expired.")
                     return
 
             context.user_data.pop(f"feedback_options:{sample_id}", None)
             await query.edit_message_text(
-                f"✅ Saved!\n\n"
-                f"🌱 Crop: *{sample.crop}*\n"
-                f"🤖 Model predicted: *{sample.model_prediction}*\n"
+                f"✅ Saved!\n\n🌱 Crop: *{crop}*\n"
+                f"🤖 Model predicted: *{predicted}*\n"
                 f"👨‍🌾 Verified label: *{correct_disease}*\n\n"
                 "This verified image can be used for the next model-training cycle.",
                 parse_mode="Markdown",
