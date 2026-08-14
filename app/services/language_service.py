@@ -1,4 +1,4 @@
-"""CSV-backed multilingual UI strings for the Kisan Telegram Bot."""
+"""CSV-backed multilingual strings for the Kisan Telegram Bot."""
 
 import csv
 import os
@@ -15,28 +15,34 @@ SUPPORTED_LANGUAGES = {
 }
 
 
-def _csv_path() -> str:
+def _data_path(filename: str) -> str:
     return os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "data",
-        "translations.csv",
+        filename,
     )
 
 
-@lru_cache(maxsize=1)
-def load_translations() -> dict:
-    translations = {}
-    path = _csv_path()
+def _load_csv(path: str) -> dict:
+    result = {}
     if not os.path.exists(path):
-        return translations
-
+        return result
     with open(path, "r", encoding="utf-8-sig", newline="") as handle:
         for row in csv.DictReader(handle):
             language = (row.get("language_code") or "").strip()
             key = (row.get("key") or "").strip()
             text = row.get("text") or ""
             if language and key:
-                translations[(language, key)] = text
+                result[(language, key)] = text
+    return result
+
+
+@lru_cache(maxsize=1)
+def load_translations() -> dict:
+    translations = _load_csv(_data_path("translations.csv"))
+    # Disease labels are kept separately so the main UI translation CSV does
+    # not become coupled to disease-response content.
+    translations.update(_load_csv(_data_path("disease_translations.csv")))
     return translations
 
 
