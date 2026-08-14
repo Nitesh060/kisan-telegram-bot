@@ -1,0 +1,64 @@
+language_code,language_name,key,text
+ en,English,result_title,Disease Identification Result
+hi,हिंदी,result_title,रोग पहचान परिणाम
+od,ଓଡ଼ିଆ,result_title,ରୋଗ ଚିହ୍ନଟ ଫଳାଫଳ
+bn,বাংলা,result_title,রোগ শনাক্তকরণের ফলাফল
+mr,मराठी,result_title,रोग ओळख परिणाम
+te,తెలుగు,result_title,వ్యాధి గుర్తింపు ఫలితం
+ta,தமிழ்,result_title,நோய் கண்டறிதல் முடிவு
+en,English,crop_label,Crop
+hi,हिंदी,crop_label,फसल
+od,ଓଡ଼ିଆ,crop_label,ଫସଲ
+bn,বাংলা,crop_label,ফসল
+mr,मराठी,crop_label,पीक
+te,తెలుగు,crop_label,పంట
+ta,தமிழ்,crop_label,பயிர்
+en,English,disease_label,Possible Disease
+hi,हिंदी,disease_label,संभावित रोग
+od,ଓଡ଼ିଆ,disease_label,ସମ୍ଭାବ୍ୟ ରୋଗ
+bn,বাংলা,disease_label,সম্ভাব্য রোগ
+mr,मराठी,disease_label,संभाव्य रोग
+te,తెలుగు,disease_label,సంభావ్య వ్యాధి
+ta,தமிழ்,disease_label,சாத்தியமான நோய்
+en,English,confidence_label,Confidence
+hi,हिंदी,confidence_label,विश्वास स्तर
+od,ଓଡ଼ିଆ,confidence_label,ନିଶ୍ଚିତତା ସ୍ତର
+bn,বাংলা,confidence_label,আস্থার মাত্রা
+mr,मराठी,confidence_label,विश्वास पातळी
+te,తెలుగు,confidence_label,నమ్మక స్థాయి
+ta,தமிழ்,confidence_label,நம்பகத்தன்மை நிலை
+en,English,symptoms_label,Symptoms
+hi,हिंदी,symptoms_label,लक्षण
+od,ଓଡ଼ିଆ,symptoms_label,ଲକ୍ଷଣ
+bn,বাংলা,symptoms_label,লক্ষণ
+mr,मराठी,symptoms_label,लक्षणे
+te,తెలుగు,symptoms_label,లక్షణాలు
+ta,தமிழ்,symptoms_label,அறிகுறிகள்
+en,English,management_label,Management
+hi,हिंदी,management_label,प्रबंधन
+od,ଓଡ଼ିଆ,management_label,ପରିଚାଳନା
+bn,বাংলা,management_label,ব্যবস্থাপনা
+mr,मराठी,management_label,व्यवस्थापन
+te,తెలుగు,management_label,నిర్వహణ
+ta,தமிழ்,management_label,மேலாண்மை
+en,English,prevention_label,Prevention
+hi,हिंदी,prevention_label,रोकथाम
+od,ଓଡ଼ିଆ,prevention_label,ପ୍ରତିରୋଧ
+bn,বাংলা,prevention_label,প্রতিরোধ
+mr,मराठी,prevention_label,प्रतिबंध
+te,తెలుగు,prevention_label,నివారణ
+ta,தமிழ்,prevention_label,தடுப்பு
+en,English,treatment_label,Treatment
+hi,हिंदी,treatment_label,उपचार
+od,ଓଡ଼ିଆ,treatment_label,ଚିକିତ୍ସା
+bn,বাংলা,treatment_label,চিকিৎসা
+mr,मराठी,treatment_label,उपचार
+te,తెలుగు,treatment_label,చికిత్స
+ta,தமிழ்,treatment_label,சிகிச்சை
+en,English,important_note,Important Note
+hi,हिंदी,important_note,महत्वपूर्ण नोट
+od,ଓଡ଼ିଆ,important_note,ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ ସୂଚନା
+bn,বাংলা,important_note,গুরুত্বপূর্ণ নোট
+mr,मराठी,important_note,महत्त्वाची सूचना
+te,తెలుగు,important_note,ముఖ్యమైన గమనిక
+ta,தமிழ்,important_note,முக்கிய குறிப்பு
