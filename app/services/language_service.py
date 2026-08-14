@@ -39,10 +39,13 @@ def _load_csv(path: str) -> dict:
 
 @lru_cache(maxsize=1)
 def load_translations() -> dict:
-    translations = _load_csv(_data_path("translations.csv"))
-    # Disease labels are kept separately so the main UI translation CSV does
-    # not become coupled to disease-response content.
-    translations.update(_load_csv(_data_path("disease_translations.csv")))
+    translations = {}
+    for filename in (
+        "translations.csv",
+        "disease_translations.csv",
+        "response_labels.csv",
+    ):
+        translations.update(_load_csv(_data_path(filename)))
     return translations
 
 
