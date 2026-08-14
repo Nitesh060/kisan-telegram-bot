@@ -20,8 +20,6 @@ def _cloudinary_credentials():
     api_key = os.getenv("CLOUDINARY_API_KEY")
     api_secret = os.getenv("CLOUDINARY_API_SECRET")
 
-    # Cloudinary also provides a single API environment variable in the form:
-    # cloudinary://API_KEY:API_SECRET@CLOUD_NAME
     cloudinary_url = os.getenv("CLOUDINARY_URL")
     if cloudinary_url and (not cloud_name or not api_key or not api_secret):
         try:
@@ -54,16 +52,26 @@ def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
             )
             return None
 
+        # Configure explicitly from parsed credentials. This avoids depending on
+        # Cloudinary SDK auto-loading behavior and works with Render env vars.
         cloudinary.config(
-            cloud_name=cloud_name,
-            api_key=api_key,
-            api_secret=api_secret,
+            cloud_name=cloud_name.strip(),
+            api_key=api_key.strip(),
+            api_secret=api_secret.strip(),
             secure=True,
+        )
+
+        logger.info(
+            "☁️ Cloudinary configured: cloud=%s api_key_suffix=%s",
+            cloud_name,
+            api_key[-4:] if len(api_key) >= 4 else "****",
         )
 
         safe_crop = "_".join(str(crop).strip().lower().split())
         safe_disease = "_".join(str(disease).strip().lower().split())
-        public_id = f"{safe_crop}/{safe_disease}/{file_id}"
+        # Keep the public_id simple and avoid special characters from Telegram IDs.
+        safe_file_id = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(file_id))
+        public_id = f"{safe_crop}/{safe_disease}/{safe_file_id}"
 
         result = cloudinary.uploader.upload(
             file_path,
@@ -86,7 +94,11 @@ def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
         logger.error("Cloudinary package is not installed")
         return None
     except Exception as exc:
-        logger.exception("Cloudinary upload failed (%s): %s", type(exc).__name__, exc)
+        logger.exception(
+            "❌ Cloudinary upload failed (%s): %s",
+            type(exc).__name__,
+            str(exc),
+        )
         return None
 
 
@@ -318,7 +330,11 @@ async def _download_and_upload_verified(context, file_id: str, crop: str, diseas
         return _cloudinary_upload(temp_path, crop, disease, file_id)
 
     except Exception as exc:
-        logger.exception("Could not download Telegram image for Cloudinary upload (%s): %s", type(exc).__name__, exc)
+        logger.exception(
+            "Could not download Telegram image for Cloudinary upload (%s): %s",
+            type(exc).__name__,
+            str(exc),
+        )
         return None
     finally:
         if temp_path:
