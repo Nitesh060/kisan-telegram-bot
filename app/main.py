@@ -21,6 +21,7 @@ from app.bot.handlers import (
     help_handler,
     about_handler,
     language_handler,
+    language_selection_handler,
 )
 from app.bot.chat_handler import chat_text_handler
 from app.bot.active_learning import (
@@ -28,6 +29,7 @@ from app.bot.active_learning import (
     crop_selection_with_active_learning,
     feedback_handler,
 )
+from app.services.language_service import SUPPORTED_LANGUAGES
 from app.bot.telegram_service import TelegramService
 
 logging.basicConfig(
@@ -89,6 +91,13 @@ async def lifespan(app: FastAPI):
 
         telegram_app.add_handler(
             CallbackQueryHandler(
+                language_selection_handler,
+                pattern=r"^lang:(en|hi|od|bn|mr|te|ta)$",
+            )
+        )
+
+        telegram_app.add_handler(
+            CallbackQueryHandler(
                 crop_selection_with_active_learning,
                 pattern=r"^crop:",
             )
@@ -105,12 +114,11 @@ async def lifespan(app: FastAPI):
             MessageHandler(filters.PHOTO, image_handler_with_active_learning)
         )
 
-        # All ordinary text now goes through the conversational handler.
-        # It keeps the existing disease/session context and uses the rule-based
-        # intent + database responses; no LLM or external AI API is required.
         telegram_app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, chat_text_handler)
         )
+
+        logger.info("✅ Supported languages: %s", ", ".join(SUPPORTED_LANGUAGES.values()))
 
         telegram_service = TelegramService(telegram_app)
         await telegram_app.start()
