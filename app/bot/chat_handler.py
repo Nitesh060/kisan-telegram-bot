@@ -5,6 +5,7 @@ disease database and session context to make text interactions conversational.
 """
 
 import logging
+import re
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -16,8 +17,49 @@ from app.responses.generator import ResponseGenerator
 logger = logging.getLogger(__name__)
 
 
+# Common crop names used to detect when a user has started talking about a
+# different crop. This prevents stale session context (for example Rice Blast)
+# from being reused for a new Tomato question.
+CROP_ALIASES = {
+    "tomato": "tomato",
+    "टमाटर": "tomato",
+    "rice": "rice",
+    "paddy": "rice",
+    "धान": "rice",
+    "wheat": "wheat",
+    "गेहूं": "wheat",
+    "potato": "potato",
+    "आलू": "potato",
+    "apple": "apple",
+    "सेब": "apple",
+    "grape": "grape",
+    "अंगूर": "grape",
+    "pepper": "pepper",
+    "chilli": "pepper",
+    "chili": "pepper",
+    "मिर्च": "pepper",
+    "corn": "corn",
+    "maize": "corn",
+    "मक्का": "corn",
+    "soybean": "soybean",
+    "soya": "soybean",
+    "cotton": "cotton",
+    "कपास": "cotton",
+}
+
+
 def _normalize(text: str) -> str:
     return " ".join((text or "").lower().strip().split())
+
+
+def _mentioned_crop(text: str) -> str | None:
+    """Return the normalized crop explicitly mentioned in the message."""
+    t = _normalize(text)
+    # Match aliases as words/phrases, including Hindi text.
+    for alias, normalized in sorted(CROP_ALIASES.items(), key=lambda x: len(x[0]), reverse=True):
+        if alias in t:
+            return normalized
+    return None
 
 
 def _simple_chat(text: str, language: str) -> str | None:
@@ -85,9 +127,43 @@ async def chat_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             return
 
         intent = IntentDetector.detect(text)
+        mentioned_crop = _mentioned_crop(text)
 
-        # If the user asks a disease-related follow-up, use the last
-        # diagnosed crop/disease as conversation context.
+        # CRITICAL CONTEXT GUARD:
+        # If the user explicitly mentions another crop, never answer using
+        # the previous crop/disease context. For example, after Rice Blast,
+        # "Tomato ke patte pe daag hain" must NOT return Rice Blast information.
+        if mentioned_crop and last_crop:
+            normalized_last_crop = _normalize(last_crop).replace("_", " ")
+            if mentioned_crop not in normalized_last_crop:
+                last_crop = None
+                last_disease = None
+
+        # A new crop symptom/question without an actual diagnosis should not
+        # receive a fabricated disease answer. Ask for a photo instead.
+        if mentioned_crop and not last_disease:
+            if language == "hi":
+                response = (
+                    f"🍅 *{mentioned_crop.title()}* ki baat samajh gaya.\n\n"
+                    "Patte par daag ka exact reason photo dekhe bina confirm nahi kar sakta. "
+                    "Kripya affected leaf ki clear photo bhejiye; main pehle crop select karwaunga "
+                    "aur phir available ML model se analyse karunga."
+                )
+            else:
+                response = (
+                    f"🌱 I understand you're asking about *{mentioned_crop.title()}*.\n\n"
+                    "I can't confirm the disease from text alone. Please send a clear photo "
+                    "of the affected leaf; I'll analyse it after you select the crop."
+                )
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=response,
+                parse_mode="Markdown",
+            )
+            return
+
+        # If there is a valid previous diagnosis, answer follow-up questions
+        # using that diagnosis as context.
         if last_crop and last_disease:
             with DatabaseManager() as session:
                 if intent == IntentDetector.SYMPTOMS:
@@ -140,8 +216,6 @@ async def chat_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             )
             return
 
-        # No context yet: do not pretend we know a disease. Ask for the
-        # crop/photo while still responding naturally to general questions.
         if intent in (
             IntentDetector.SYMPTOMS,
             IntentDetector.CAUSE,
