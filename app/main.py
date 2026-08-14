@@ -17,6 +17,9 @@ from app.config import settings
 from app.database.database import init_db, get_session
 from app.services.disease_service import DiseaseService
 from app.bot.handlers import (
+    image_handler,
+)
+from app.bot.language_handlers import (
     start_handler,
     help_handler,
     about_handler,
