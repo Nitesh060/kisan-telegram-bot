@@ -15,25 +15,39 @@ logger = logging.getLogger(__name__)
 
 
 def _cloudinary_credentials():
-    """Read Cloudinary credentials from either separate vars or CLOUDINARY_URL."""
-    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
-    api_key = os.getenv("CLOUDINARY_API_KEY")
-    api_secret = os.getenv("CLOUDINARY_API_SECRET")
-
+    """Read Cloudinary credentials, preferring the official CLOUDINARY_URL."""
     cloudinary_url = os.getenv("CLOUDINARY_URL")
-    if cloudinary_url and (not cloud_name or not api_key or not api_secret):
+
+    # Cloudinary's API environment variable is the canonical connection string
+    # for a product environment. Prefer it so stale/mismatched individual Render
+    # variables cannot override the correct API secret.
+    if cloudinary_url:
         try:
-            parsed = urlparse(cloudinary_url)
+            parsed = urlparse(cloudinary_url.strip())
             if parsed.scheme != "cloudinary" or not parsed.hostname:
                 raise ValueError("CLOUDINARY_URL must start with cloudinary://")
-            cloud_name = parsed.hostname
-            api_key = unquote(parsed.username or "")
-            api_secret = unquote(parsed.password or "")
+
+            cloud_name = parsed.hostname.strip()
+            api_key = unquote(parsed.username or "").strip()
+            api_secret = unquote(parsed.password or "").strip()
+
+            if not all([cloud_name, api_key, api_secret]):
+                raise ValueError("CLOUDINARY_URL is missing cloud name, API key, or API secret")
+
+            return cloud_name, api_key, api_secret
         except Exception as exc:
             logger.error("Invalid CLOUDINARY_URL configuration: %s", exc)
             return None, None, None
 
-    return cloud_name, api_key, api_secret
+    # Backward-compatible fallback to separate Render environment variables.
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+    api_key = os.getenv("CLOUDINARY_API_KEY")
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
+    return (
+        cloud_name.strip() if cloud_name else None,
+        api_key.strip() if api_key else None,
+        api_secret.strip() if api_secret else None,
+    )
 
 
 def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
@@ -52,12 +66,10 @@ def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
             )
             return None
 
-        # Configure explicitly from parsed credentials. This avoids depending on
-        # Cloudinary SDK auto-loading behavior and works with Render env vars.
         cloudinary.config(
-            cloud_name=cloud_name.strip(),
-            api_key=api_key.strip(),
-            api_secret=api_secret.strip(),
+            cloud_name=cloud_name,
+            api_key=api_key,
+            api_secret=api_secret,
             secure=True,
         )
 
@@ -69,7 +81,6 @@ def _cloudinary_upload(file_path: str, crop: str, disease: str, file_id: str):
 
         safe_crop = "_".join(str(crop).strip().lower().split())
         safe_disease = "_".join(str(disease).strip().lower().split())
-        # Keep the public_id simple and avoid special characters from Telegram IDs.
         safe_file_id = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(file_id))
         public_id = f"{safe_crop}/{safe_disease}/{safe_file_id}"
 
