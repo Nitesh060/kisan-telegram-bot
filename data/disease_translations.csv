@@ -55,3 +55,38 @@ bn,বাংলা,important_note,গুরুত্বপূর্ণ নোট
 mr,मराठी,important_note,महत्त्वाची सूचना
 te,తెలుగు,important_note,ముఖ్యమైన గమనిక
 ta,தமிழ்,important_note,முக்கிய குறிப்பு
+en,English,disease_result,Disease Identification Result
+hi,हिंदी,disease_result,रोग पहचान परिणाम
+od,ଓଡ଼ିଆ,disease_result,ରୋଗ ଚିହ୍ନଟ ଫଳାଫଳ
+bn,বাংলা,disease_result,রোগ শনাক্তকরণের ফলাফল
+mr,मराठी,disease_result,रोग ओळख परिणाम
+te,తెలుగు,disease_result,వ్యాధి గుర్తింపు ఫలితం
+ta,தமிழ்,disease_result,நோய் கண்டறிதல் முடிவு
+en,English,preliminary_note,This is an AI-based preliminary identification. For severe or persistent conditions, please consult a local agricultural expert or extension officer.
+hi,हिंदी,preliminary_note,यह AI-आधारित प्रारंभिक पहचान है। गंभीर या लगातार बनी रहने वाली स्थिति में स्थानीय कृषि विशेषज्ञ या कृषि प्रसार अधिकारी से सलाह लें।
+od,ଓଡ଼ିଆ,preliminary_note,ଏହା AI ଆଧାରିତ ପ୍ରାରମ୍ଭିକ ଚିହ୍ନଟ। ଗୁରୁତର କିମ୍ବା ଦୀର୍ଘସ୍ଥାୟୀ ସମସ୍ୟା ପାଇଁ ସ୍ଥାନୀୟ କୃଷି ବିଶେଷଜ୍ଞଙ୍କ ପରାମର୍ଶ ନିଅନ୍ତୁ।
+bn,বাংলা,preliminary_note,এটি AI-ভিত্তিক প্রাথমিক শনাক্তকরণ। গুরুতর বা দীর্ঘস্থায়ী সমস্যার ক্ষেত্রে স্থানীয় কৃষি বিশেষজ্ঞের পরামর্শ নিন।
+mr,मराठी,preliminary_note,ही AI-आधारित प्राथमिक ओळख आहे. गंभीर किंवा सतत राहणाऱ्या समस्यांसाठी स्थानिक कृषी तज्ज्ञांचा सल्ला घ्या.
+te,తెలుగు,preliminary_note,ఇది AI ఆధారిత ప్రాథమిక గుర్తింపు. తీవ్రమైన లేదా కొనసాగుతున్న సమస్యల కోసం స్థానిక వ్యవసాయ నిపుణుడిని సంప్రదించండి.
+ta,தமிழ்,preliminary_note,இது AI அடிப்படையிலான ஆரம்ப நிலை கண்டறிதல். கடுமையான அல்லது தொடர்ந்து இருக்கும் பிரச்சினைகளுக்கு உள்ளூர் வேளாண் நிபுணரை அணுகவும்.
+en,English,symptoms_unavailable,Detailed symptoms are not available.
+hi,हिंदी,symptoms_unavailable,विस्तृत लक्षण उपलब्ध नहीं हैं।
+od,ଓଡ଼ିଆ,symptoms_unavailable,ବିସ୍ତୃତ ଲକ୍ଷଣ ଉପଲବ୍ଧ ନାହିଁ।
+bn,বাংলা,symptoms_unavailable,বিস্তারিত লক্ষণ পাওয়া যায়নি।
+mr,मराठी,symptoms_unavailable,तपशीलवार लक्षणे उपलब्ध नाहीत.
+te,తెలుగు,symptoms_unavailable,వివరమైన లక్షణాలు అందుబాటులో లేవు.
+ta,தமிழ்,symptoms_unavailable,விரிவான அறிகுறிகள் கிடைக்கவில்லை.
+en,English,management_unavailable,Management information is not available.
+hi,हिंदी,management_unavailable,प्रबंधन की जानकारी उपलब्ध नहीं है।
+od,ଓଡ଼ିଆ,management_unavailable,ପରିଚାଳନା ସୂଚନା ଉପଲବ୍ଧ ନାହିଁ।
+bn,বাংলা,management_unavailable,ব্যবস্থাপনার তথ্য পাওয়া যায়নি।
+mr,मराठी,management_unavailable,व्यवस्थापनाची माहिती उपलब्ध नाही.
+te,తెలుగు,management_unavailable,నిర్వహణ సమాచారం అందుబాటులో లేదు.
+ta,தமிழ்,management_unavailable,மேலாண்மை தகவல் கிடைக்கவில்லை.
+en,English,prevention_unavailable,No specific prevention information available.
+hi,हिंदी,prevention_unavailable,कोई विशिष्ट रोकथाम जानकारी उपलब्ध नहीं है।
+od,ଓଡ଼ିଆ,prevention_unavailable,ନିର୍ଦ୍ଦିଷ୍ଟ ପ୍ରତିରୋଧ ସୂଚନା ଉପଲବ୍ଧ ନାହିଁ।
+bn,বাংলা,prevention_unavailable,নির্দিষ্ট প্রতিরোধের তথ্য পাওয়া যায়নি।
+mr,मराठी,prevention_unavailable,विशिष्ट प्रतिबंधाची माहिती उपलब्ध नाही.
+te,తెలుగు,prevention_unavailable,నిర్దిష్ట నివారణ సమాచారం అందుబాటులో లేదు.
+ta,தமிழ்,prevention_unavailable,குறிப்பிட்ட தடுப்பு தகவல் கிடைக்கவில்லை.
