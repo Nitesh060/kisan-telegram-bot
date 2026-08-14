@@ -10,9 +10,8 @@ from typing import Dict
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-import telegram
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 from app.config import settings
 from app.database.database import init_db, get_session
@@ -22,8 +21,8 @@ from app.bot.handlers import (
     help_handler,
     about_handler,
     language_handler,
-    text_handler,
 )
+from app.bot.chat_handler import chat_text_handler
 from app.bot.active_learning import (
     image_handler_with_active_learning,
     crop_selection_with_active_learning,
@@ -88,8 +87,6 @@ async def lifespan(app: FastAPI):
         telegram_app.add_handler(CommandHandler("about", about_handler))
         telegram_app.add_handler(CommandHandler("language", language_handler))
 
-        # Crop selection is handled by the active-learning wrapper, which calls
-        # the existing crop prediction and then asks for human verification.
         telegram_app.add_handler(
             CallbackQueryHandler(
                 crop_selection_with_active_learning,
@@ -97,7 +94,6 @@ async def lifespan(app: FastAPI):
             )
         )
 
-        # Human feedback: correct/wrong/corrected disease.
         telegram_app.add_handler(
             CallbackQueryHandler(
                 feedback_handler,
@@ -108,8 +104,12 @@ async def lifespan(app: FastAPI):
         telegram_app.add_handler(
             MessageHandler(filters.PHOTO, image_handler_with_active_learning)
         )
+
+        # All ordinary text now goes through the conversational handler.
+        # It keeps the existing disease/session context and uses the rule-based
+        # intent + database responses; no LLM or external AI API is required.
         telegram_app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, chat_text_handler)
         )
 
         telegram_service = TelegramService(telegram_app)
