@@ -1,16 +1,19 @@
 """
-Response generation engine - deterministic, no LLM
+Response generation engine - deterministic, no LLM.
+Disease content comes from the database; visible section labels are multilingual.
 """
 
 import logging
 import re
-from typing import Optional, Dict
+from typing import Optional
+
 from app.responses.templates import (
     DISEASE_PREDICTION_TEMPLATE,
     CONFIDENCE_TEMPLATES,
     ERROR_MESSAGES,
 )
 from app.database.repository import DiseaseRepository
+from app.services.language_service import get_text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -21,7 +24,6 @@ class ResponseGenerator:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        """Normalize labels so ML output and DB naming styles can match."""
         value = (value or "").strip().lower()
         value = value.replace("_", " ").replace("-", " ")
         value = re.sub(r"\s+", " ", value)
@@ -29,7 +31,6 @@ class ResponseGenerator:
 
     @staticmethod
     def _canonical_crop(crop: str) -> str:
-        """Map common ML crop spellings to database crop names."""
         normalized = ResponseGenerator._normalize(crop)
         aliases = {
             "chili": "Chilli",
@@ -42,7 +43,6 @@ class ResponseGenerator:
 
     @staticmethod
     def _canonical_disease(crop: str, disease: str) -> str:
-        """Map common ML disease labels to names used by the DB."""
         normalized = ResponseGenerator._normalize(disease)
         crop_norm = ResponseGenerator._normalize(crop)
         aliases = {
@@ -58,12 +58,11 @@ class ResponseGenerator:
 
     @staticmethod
     def _get_disease_info(session: Session, crop: str, disease: str):
-        """Find disease information using exact, canonical and normalized matching."""
         crop_clean = ResponseGenerator._canonical_crop(crop)
         disease_clean = (disease or "").strip()
-
         combined_crop = crop_clean
         combined_disease = disease_clean
+
         if " - " in disease_clean:
             left, right = disease_clean.split(" - ", 1)
             if not combined_crop:
@@ -108,13 +107,11 @@ class ResponseGenerator:
             wanted_combined = ResponseGenerator._normalize(
                 f"{combined_crop} {combined_disease}"
             )
-
             for record in crop_diseases:
                 db_name = ResponseGenerator._normalize(record.disease_name)
                 db_combined = ResponseGenerator._normalize(
                     f"{record.crop} {record.disease_name}"
                 )
-
                 if db_name == wanted or db_combined == wanted_combined:
                     logger.info(
                         "Normalized disease DB match: %s - %s (requested: %s - %s)",
@@ -127,6 +124,10 @@ class ResponseGenerator:
         return None
 
     @staticmethod
+    def _label(key: str, language: str) -> str:
+        return get_text(key, language)
+
+    @staticmethod
     def generate_disease_response(
         session: Session,
         crop: str,
@@ -136,55 +137,75 @@ class ResponseGenerator:
     ) -> Optional[str]:
         try:
             disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
-
             if not disease_info:
-                logger.warning(f"Disease not found in DB: {crop} - {disease}")
+                logger.warning("Disease not found in DB: %s - %s", crop, disease)
                 return ResponseGenerator.get_error_message("no_disease_found", language)
 
             confidence_percent = round(confidence * 100, 1)
             confidence_level = ResponseGenerator._get_confidence_level(confidence)
             confidence_text = CONFIDENCE_TEMPLATES.get(language, {}).get(
                 confidence_level,
-                f"Confidence: {confidence_percent}%"
+                f"{ResponseGenerator._label('confidence', language)}: {confidence_percent}%",
             )
+
+            # Keep disease content exactly as stored in the DB. Only the labels
+            # are translated here, so we never silently invent a translation.
+            symptoms = disease_info.symptoms or get_text("symptoms_unavailable", language)
+            management = disease_info.management or get_text("management_unavailable", language)
 
             prevention_section = ""
             if disease_info.prevention:
-                if language == "hi":
-                    prevention_section = f"🛡️ *रोकथाम:*\n{disease_info.prevention}\n\n"
-                else:
-                    prevention_section = f"🛡️ *Prevention:*\n{disease_info.prevention}\n\n"
+                prevention_section = (
+                    f"🛡️ *{ResponseGenerator._label('prevention', language)}:*\n"
+                    f"{disease_info.prevention}\n\n"
+                )
 
             treatment_section = ""
             if disease_info.treatment:
-                if language == "hi":
-                    treatment_section = f"💊 *उपचार:*\n{disease_info.treatment}\n\n"
-                else:
-                    treatment_section = f"💊 *Treatment:*\n{disease_info.treatment}\n\n"
+                treatment_section = (
+                    f"💊 *{ResponseGenerator._label('treatment', language)}:*\n"
+                    f"{disease_info.treatment}\n\n"
+                )
 
-            template = DISEASE_PREDICTION_TEMPLATE.get(language, DISEASE_PREDICTION_TEMPLATE["en"])
+            # Existing templates remain compatible; for the new languages we
+            # build the disease card directly so every visible label is localized.
+            if language not in ("en", "hi"):
+                return (
+                    f"🌱 *{ResponseGenerator._label('disease_result', language)}*\n\n"
+                    f"*{ResponseGenerator._label('crop', language)}:* {crop}\n"
+                    f"*{ResponseGenerator._label('disease', language)}:* {disease_info.disease_name}\n"
+                    f"*{ResponseGenerator._label('confidence', language)}:* {confidence_percent}%\n\n"
+                    f"🔍 *{ResponseGenerator._label('symptoms', language)}:*\n{symptoms}\n\n"
+                    f"🛠️ *{ResponseGenerator._label('management', language)}:*\n{management}\n\n"
+                    f"{prevention_section}{treatment_section}"
+                    f"⚠️ *{ResponseGenerator._label('important_note', language)}:*\n"
+                    f"{get_text('preliminary_note', language)}\n"
+                )
 
+            template = DISEASE_PREDICTION_TEMPLATE.get(
+                language,
+                DISEASE_PREDICTION_TEMPLATE["en"],
+            )
             response = template.format(
                 crop=crop,
                 disease=disease_info.disease_name,
                 confidence_percent=confidence_percent,
                 confidence_level_text=confidence_text,
-                symptoms=disease_info.symptoms or "Detailed symptoms not available",
-                management=disease_info.management or "Management info not available",
+                symptoms=symptoms,
+                management=management,
                 prevention_section=prevention_section,
                 treatment_section=treatment_section,
                 severity=disease_info.severity or "Unknown",
             )
-
             return response
 
         except Exception as e:
-            logger.error(f"Error generating disease response: {e}")
+            logger.error("Error generating disease response: %s", e, exc_info=True)
             return None
 
     @staticmethod
     def generate_info_response(session: Session, crop: str, disease: str, language: str = "en") -> Optional[str]:
-        return ResponseGenerator.generate_disease_response(session, crop, disease, confidence=1.0, language=language)
+        return ResponseGenerator.generate_disease_response(session, crop, disease, 1.0, language)
 
     @staticmethod
     def generate_symptom_response(session: Session, crop: str, disease: str, language: str = "en") -> Optional[str]:
@@ -192,11 +213,13 @@ class ResponseGenerator:
             disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
-            if language == "hi":
-                return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🔍 *लक्षण:*\n{disease_info.symptoms}\n"
-            return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🔍 *Symptoms:*\n{disease_info.symptoms}\n"
+            return (
+                f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n"
+                f"🔍 *{ResponseGenerator._label('symptoms', language)}:*\n"
+                f"{disease_info.symptoms}\n"
+            )
         except Exception as e:
-            logger.error(f"Error generating symptom response: {e}")
+            logger.error("Error generating symptom response: %s", e, exc_info=True)
             return None
 
     @staticmethod
@@ -205,11 +228,13 @@ class ResponseGenerator:
             disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
-            if language == "hi":
-                return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛠️ *प्रबंधन:*\n{disease_info.management}\n"
-            return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛠️ *Management:*\n{disease_info.management}\n"
+            return (
+                f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n"
+                f"🛠️ *{ResponseGenerator._label('management', language)}:*\n"
+                f"{disease_info.management}\n"
+            )
         except Exception as e:
-            logger.error(f"Error generating management response: {e}")
+            logger.error("Error generating management response: %s", e, exc_info=True)
             return None
 
     @staticmethod
@@ -218,27 +243,26 @@ class ResponseGenerator:
             disease_info = ResponseGenerator._get_disease_info(session, crop, disease)
             if not disease_info:
                 return ResponseGenerator.get_error_message("no_disease_found", language)
-            if language == "hi":
-                if disease_info.prevention:
-                    return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛡️ *रोकथाम:*\n{disease_info.prevention}\n"
-                return "कोई विशिष्ट रोकथाम जानकारी उपलब्ध नहीं है।\n"
             if disease_info.prevention:
-                return f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n🛡️ *Prevention:*\n{disease_info.prevention}\n"
-            return "No specific prevention information available.\n"
+                return (
+                    f"🌾 *{disease_info.crop} - {disease_info.disease_name}*\n\n"
+                    f"🛡️ *{ResponseGenerator._label('prevention', language)}:*\n"
+                    f"{disease_info.prevention}\n"
+                )
+            return get_text("prevention_unavailable", language)
         except Exception as e:
-            logger.error(f"Error generating prevention response: {e}")
+            logger.error("Error generating prevention response: %s", e, exc_info=True)
             return None
 
     @staticmethod
     def get_error_message(error_key: str, language: str = "en") -> str:
         messages = ERROR_MESSAGES.get(language, ERROR_MESSAGES["en"])
-        return messages.get(error_key, "An error occurred. Please try again.")
+        return messages.get(error_key, ERROR_MESSAGES["en"].get(error_key, "An error occurred. Please try again."))
 
     @staticmethod
     def _get_confidence_level(confidence: float) -> str:
         if confidence >= 0.85:
             return "high"
-        elif confidence >= 0.60:
+        if confidence >= 0.60:
             return "medium"
-        else:
-            return "low"
+        return "low"
