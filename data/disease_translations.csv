@@ -1,0 +1,57 @@
+language_code,language_name,key,text
+en,English,crop,Crop
+hi,हिंदी,crop,फसल
+od,ଓଡ଼ିଆ,crop,ଫସଲ
+bn,বাংলা,crop,ফসল
+mr,मराठी,crop,पीक
+te,తెలుగు,crop,పంట
+ta,தமிழ்,crop,பயிர்
+en,English,disease,Possible Disease
+hi,हिंदी,disease,संभावित रोग
+od,ଓଡ଼ିଆ,disease,ସମ୍ଭାବ୍ୟ ରୋଗ
+bn,বাংলা,disease,সম্ভাব্য রোগ
+mr,मराठी,disease,संभाव्य रोग
+te,తెలుగు,disease,సంభావ్య వ్యాధి
+ta,தமிழ்,disease,சாத்தியமான நோய்
+en,English,confidence,Confidence
+hi,हिंदी,confidence,विश्वास
+od,ଓଡ଼ିଆ,confidence,ନିଶ୍ଚିତତା
+bn,বাংলা,confidence,নির্ভরযোগ্যতা
+mr,मराठी,confidence,विश्वास पातळी
+te,తెలుగు,confidence,నమ్మక స్థాయి
+ta,தமிழ்,confidence,நம்பகத்தன்மை
+en,English,symptoms,Symptoms
+hi,हिंदी,symptoms,लक्षण
+od,ଓଡ଼ିଆ,symptoms,ଲକ୍ଷଣ
+bn,বাংলা,symptoms,লক্ষণ
+mr,मराठी,symptoms,लक्षणे
+te,తెలుగు,symptoms,లక్షణాలు
+ta,தமிழ்,symptoms,அறிகுறிகள்
+en,English,management,Management
+hi,हिंदी,management,प्रबंधन
+od,ଓଡ଼ିଆ,management,ପରିଚାଳନା
+bn,বাংলা,management,ব্যবস্থাপনা
+mr,मराठी,management,व्यवस्थापन
+te,తెలుగు,management,నిర్వహణ
+ta,தமிழ்,management,மேலாண்மை
+en,English,prevention,Prevention
+hi,हिंदी,prevention,रोकथाम
+od,ଓଡ଼ିଆ,prevention,ପ୍ରତିରୋଧ
+bn,বাংলা,prevention,প্রতিরোধ
+mr,मराठी,prevention,प्रतिबंध
+te,తెలుగు,prevention,నివారణ
+ta,தமிழ்,prevention,தடுப்பு
+en,English,treatment,Treatment
+hi,हिंदी,treatment,उपचार
+od,ଓଡ଼ିଆ,treatment,ଚିକିତ୍ସା
+bn,বাংলা,treatment,চিকিৎসা
+mr,मराठी,treatment,उपचार
+te,తెలుగు,treatment,చికిత్స
+ta,தமிழ்,treatment,சிகிச்சை
+en,English,important_note,Important Note
+hi,हिंदी,important_note,महत्वपूर्ण नोट
+od,ଓଡ଼ିଆ,important_note,ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ ସୂଚନା
+bn,বাংলা,important_note,গুরুত্বপূর্ণ নোট
+mr,मराठी,important_note,महत्त्वाची सूचना
+te,తెలుగు,important_note,ముఖ్యమైన గమనిక
+ta,தமிழ்,important_note,முக்கிய குறிப்பு
